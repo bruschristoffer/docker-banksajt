@@ -1,6 +1,7 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import cors from 'cors';
+import db from './db.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -18,10 +19,7 @@ function generateOTP() {
     return otp.toString();
 }
 
-// Din kod här. Skriv dina arrayer
-const users = []; // Array för att lagra användare
-const accounts = []; // Array för att lagra konton
-const sessions = []; // Array för att lagra sessioner
+
 
 // Din kod här. Skriv dina routes:
 
@@ -34,11 +32,21 @@ app.post('/users', (req, res) => {
         return res.status(400).json({ message: 'Användarnamn och lösenord krävs' });
     }
 
-    const userId = Date.now();
-    users.push({ id: userId, username, password });
-    accounts.push({id: accounts.length +1, userId, amount: 0}); // Skapa ett konto med saldo 0 för den nya användaren
+    try {
+        const insertUser = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)');
+        const userResult = insertUser.run(username, password);
+        const userId = Number(userResult.lastInsertRowid);
 
-    res.status(201).json({ message: 'Användare skapad', userId });
+        const insertAccount = db.prepare('INSERT INTO accounts (userId, amount) VALUES (?, 0)');
+        insertAccount.run(userId);
+
+        return res.status(201).json({ message: 'Användare skapad', userId });
+    } catch (error) {
+        if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            return res.status(400).json({ message: 'Användarnamnet är redan taget' });
+        }
+        res.status(500).json({ message: 'Ett fel uppstod vid skapandet av användaren' });
+    }
 });
 
 
@@ -46,14 +54,14 @@ app.post('/users', (req, res) => {
 app.post('/sessions', (req, res) => {
     const { username, password } = req.body;
 
-    const user = users.find(u => u.username === username && u.password === password);
+    const user = db.prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password);
 
     if (!user) {
         return res.status(401).json({ message: 'Felaktigt användare eller lösenord' });
     }
 
     const token = generateOTP();
-    sessions.push({ token, userId: user.id });
+    db.prepare('INSERT INTO sessions (token, userId) VALUES (?, ?)').run(token, user.id);
 
     res.status(200).json({ token });
 });
@@ -63,12 +71,12 @@ app.post('/sessions', (req, res) => {
 app.post('/me/accounts', (req, res) => {
     const { token } = req.body;
 
-    const session = sessions.find(s => s.token === token);
+    const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
     if (!session) {
         return res.status(401).json({ message: 'Ogiltig token' });
     }
 
-    const accont = accounts.find(a => a.userId === session.userId);
+    const accont = db.prepare('SELECT * FROM accounts WHERE userId = ?').get(session.userId);
     if (!accont) {
         return res.status(404).json({ message: 'Konto hittades inte' });
     }
@@ -85,18 +93,19 @@ app.post('/me/accounts/transactions', (req, res) => {
         return res.status(400).json({ message: 'Ogiltigt belopp' });
     }
 
-    const session = sessions.find(s => s.token === token);
+    const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
     if (!session) {
         return res.status(401).json({ message: 'Ogiltig token' });
     }
 
-    const account = accounts.find(a => a.userId === session.userId);
+    const account = db.prepare('SELECT * FROM accounts WHERE userId = ?').get(session.userId);
     if (!account) {
         return res.status(404).json({ message: 'Konto hittades inte' });
     }
-
-    account.amount += nrAmount;
-    res.status(200).json({amount: account.amount});
+    
+    const newAmount = account.amount + nrAmount;
+    db.prepare('UPDATE accounts SET amount = ? WHERE userId = ?').run(newAmount, session.userId);
+    res.status(200).json({amount: newAmount});
 });
 
 // Starta servern
