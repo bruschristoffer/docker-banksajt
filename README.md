@@ -1,3 +1,7 @@
+http://13.48.30.194:3000
+
+AWS är blä
+
 # Skapa en Banksajt och publicera på aws
 
 I dagens uppgift ska vi öva på att skapa en react-sajt med backend i express och publicera den på en ec2 instans i aws.
