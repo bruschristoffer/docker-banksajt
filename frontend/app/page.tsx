@@ -1,6 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
 
+const failCI: number = "detta kommer krascha bygget";
+
 export default function Home() {
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
@@ -21,7 +23,9 @@ export default function Home() {
       </header>
 
       <main className="flex w-full max-w-3xl flex-1 flex-col items-center justify-between bg-white px-16 py-32 dark:bg-black sm:items-start">
-        <h1 className="text-4xl font-extrabold">Välkommen till banken mannen</h1>
+        <h1 className="text-4xl font-extrabold">
+          Välkommen till banken mannen
+        </h1>
         <p className="mt-4 max-w-lg text-lg text-zinc-600">
           Enkelt att hantera dina konton
         </p>
