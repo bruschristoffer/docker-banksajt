@@ -1,8 +1,10 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline with Automated Tests
 
 on:
   push:
-    branches: ["main", "CI/CD"]
+    branches: ["main", "CI/CD", "Playwrite-och-Vitest"]
+  pull_request:
+    branches: ["main", "CI/CD", "Playwrite-och-Vitest"]
 
 jobs:
   test-frontend:

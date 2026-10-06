@@ -1,7 +1,8 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import cors from 'cors';
-import mysql from 'mysql2/promise';
+import express from "express";
+import bodyParser from "body-parser";
+import cors from "cors";
+import mysql from "mysql2/promise";
+import { validateAmount } from "./src/validateAmount.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -11,39 +12,36 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const pool = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'bank_app',
-    password: process.env.DB_PASSWORD || 'bank_password',
-    database: process.env.DB_NAME || 'bank',
-    port: Number(process.env.DB_PORT) || 3306
+  host: process.env.DB_HOST || "localhost",
+  user: process.env.DB_USER || "bank_app",
+  password: process.env.DB_PASSWORD || "bank_password",
+  database: process.env.DB_NAME || "bank",
+  port: Number(process.env.DB_PORT) || 3306,
 });
 
 async function query(sql, params) {
-    const [results] = await pool.execute(sql, params);
-    return results;
+  const [results] = await pool.execute(sql, params);
+  return results;
 }
 
 // Generera engångslösenord
 function generateOTP() {
-    // Generera en sexsiffrig numerisk OTP
-    const otp = Math.floor(100000 + Math.random() * 900000);
-    return otp.toString();
+  // Generera en sexsiffrig numerisk OTP
+  const otp = Math.floor(100000 + Math.random() * 900000);
+  return otp.toString();
 }
-
-
 
 // Din kod här. Skriv dina routes:
 
-
 //tar emot användarnamn och lösenord, skapar en ny användare och ett konto med saldo 0.
-app.post('/users', async (req, res) => {
-    const { username, password } = req.body;
+app.post("/users", async (req, res) => {
+  const { username, password } = req.body;
 
-    if (!username || !password) {
-        return res.status(400).json({ message: 'Användarnamn och lösenord krävs' });
-    }
+  if (!username || !password) {
+    return res.status(400).json({ message: "Användarnamn och lösenord krävs" });
+  }
 
-    /*try {
+  /*try {
         const insertUser = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)');
         const userResult = insertUser.run(username, password);
         const userId = Number(userResult.lastInsertRowid);
@@ -52,46 +50,56 @@ app.post('/users', async (req, res) => {
         insertAccount.run(userId);
 
         return res.status(201).json({ message: 'Användare skapad', userId });
-    }*/try {
-        const userResult= await query('INSERT INTO users (username, password) VALUES (?, ?)', [username, password]);
-        const userId = userResult.insertId;
+    }*/ try {
+    const userResult = await query(
+      "INSERT INTO users (username, password) VALUES (?, ?)",
+      [username, password],
+    );
+    const userId = userResult.insertId;
 
-        await query(
-            'INSERT INTO accounts (userId, amount) VALUES(?,0)',
-            [userId]
-        );
+    await query("INSERT INTO accounts (userId, amount) VALUES(?,0)", [userId]);
 
-        return res.status(201).json({message: 'Användare skapad', userId});
-    } catch (error) {
-        if (error.code === 'ER_DUP_ENTRY') {
-            return res.status(400).json({ message: 'Användarnamnet är redan taget' });
-        }
-        return res.status(500).json({ message: 'Ett fel uppstod vid skapandet av användaren' });
+    return res.status(201).json({ message: "Användare skapad", userId });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({ message: "Användarnamnet är redan taget" });
     }
+    return res
+      .status(500)
+      .json({ message: "Ett fel uppstod vid skapandet av användaren" });
+  }
 });
 
-
 //kontrollerar om användaren finns och lösenordet är korrekt och genererar en OTP-token om det är korrekt.
-app.post('/sessions', async(req, res) => {
+app.post("/sessions", async (req, res) => {
+  const { username, password } = req.body;
 
-    const { username, password } = req.body;
+  try {
+    const users = await query(
+      "SELECT * FROM users WHERE username = ? AND password = ?",
+      [username, password],
+    );
 
-    try {
-        const users = await query('SELECT * FROM users WHERE username = ? AND password = ?', [username, password]);
-
-        if (users.length === 0) {
-            return res.status(401).json({ message: 'Felaktigt användare eller lösenord' });
-        }
-
-        const user = users[0];
-        const token = generateOTP();
-        await query('INSERT INTO sessions (token, userId) VALUES (?, ?)', [token, user.id]);
-
-        return res.status(200).json({ token });
-    } catch (error) {
-        return res.status(500).json({ message: 'Ett fel uppstod vid inloggningen' });
+    if (users.length === 0) {
+      return res
+        .status(401)
+        .json({ message: "Felaktigt användare eller lösenord" });
     }
-/*
+
+    const user = users[0];
+    const token = generateOTP();
+    await query("INSERT INTO sessions (token, userId) VALUES (?, ?)", [
+      token,
+      user.id,
+    ]);
+
+    return res.status(200).json({ token });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ message: "Ett fel uppstod vid inloggningen" });
+  }
+  /*
     const user = db.prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password);
 
     if (!user) {
@@ -104,34 +112,36 @@ app.post('/sessions', async(req, res) => {
     res.status(200).json({ token });*/
 });
 
-
 //kontrollerar om token är giltig och returnerar kontoinformationen för den användaren.
-app.post('/me/accounts', async (req, res) => {
-    const { token } = req.body;
+app.post("/me/accounts", async (req, res) => {
+  const { token } = req.body;
+  if (!token) {
+    return res.status(400).json({ message: "Token krävs" });
+  }
 
-    try {
-        const sessions = await query('SELECT * FROM sessions WHERE token = ?', [token]);
+  try {
+    const sessions = await query("SELECT * FROM sessions WHERE token = ?", [
+      token,
+    ]);
 
-        if (sessions.length === 0) {
-            return res.status(401).json({ message: 'Ogiltig token' });
-        }
-
-        const session = sessions[0];
-        const accounts = await query(
-            'SELECT * FROM accounts WHERE userID = ?',
-            [session.userId]
-        );
-
-        if (accounts.length === 0){
-            return res.status(404).json({ message: 'Konto hittades inte'});
-    }
-    return res.status(200).json({amount: Number(accounts[0].amount)});
-}catch (error){
-    return res.status(500).json({message: 'Internt serverfel'});
+    if (sessions.length === 0) {
+      return res.status(401).json({ message: "Ogiltig token" });
     }
 
+    const session = sessions[0];
+    const accounts = await query("SELECT * FROM accounts WHERE userID = ?", [
+      session.userId,
+    ]);
 
-    /*const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
+    if (accounts.length === 0) {
+      return res.status(404).json({ message: "Konto hittades inte" });
+    }
+    return res.status(200).json({ amount: Number(accounts[0].amount) });
+  } catch (error) {
+    return res.status(500).json({ message: "Internt serverfel" });
+  }
+
+  /*const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
     if (!session) {
         return res.status(401).json({ message: 'Ogiltig token' });
     }
@@ -145,61 +155,91 @@ app.post('/me/accounts', async (req, res) => {
 });
 
 //kontrollerar om token är giltig och uppdaterar kontots saldo med det angivna beloppet.
-app.post('/me/accounts/transactions', async(req, res) => {
-    const { token, amount } = req.body;
-    const nrAmount = parseFloat(amount);
+app.post("/me/accounts/transactions", async (req, res) => {
+  const { token, amount } = req.body;
+  // const nrAmount = parseFloat(amount);
 
-    if (isNaN(nrAmount) || nrAmount <= 0) {
-        return res.status(400).json({ message: 'Ogiltigt belopp' });
+  if (!token) {
+    return res.status(400).json({ message: "Token krävs" });
+  }
+  const validate = validateAmount(amount);
+  if (!validate.valid) {
+    return res.status(400).json({ message: validate.message });
+  }
+
+  const nrAmount = validate.value;
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [sessions] = await connection.execute(
+      "SELECT * FROM sessions WHERE token = ?",
+      [token],
+    );
+    if (sessions.length === 0) {
+      await connection.rollback();
+      return res.status(401).json({ message: "Ogiltig token" });
     }
 
-    try {
-        const sessions = await query(
-            'SELECT * FROM sessions WHERE token = ?',
-            [token]
-        );
-
-        if (sessions.length === 0){
-            return res.status(401).json({message: 'Ogiltig token'});
-        }
-
-        const session = sessions[0];
-        const accounts = await query(
-            'SELECT * FROM accounts WHERE userId = ?',
-            [session.userId]
-        );
-
-        if (accounts.length === 0){
-            return res.status(404).json({message: 'Konto hittades inte'});
-        }
-
-        const newAmount = Number(accounts[0].amount)+nrAmount;
-
-        await query(
-            'UPDATE accounts SET amount = ? WHERE userID = ?',
-            [newAmount,session.userId]
-        );
-        return res.status(200).json({amount: newAmount});
-    }catch(error){
-        return res.status(500).json({message: 'Internt se3rverfel'});
-    }
-/*
-    const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
-    if (!session) {
-        return res.status(401).json({ message: 'Ogiltig token' });
+    const session = sessions[0];
+    const [accounts] = await connection.execute(
+      "SELECT * FROM accounts WHERE userId = ?",
+      [session.userId],
+    );
+    if (accounts.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: "Konto hittades inte" });
     }
 
-    const account = db.prepare('SELECT * FROM accounts WHERE userId = ?').get(session.userId);
-    if (!account) {
-        return res.status(404).json({ message: 'Konto hittades inte' });
+    const newAmount = Number(accounts[0].amount) + nrAmount;
+
+    await connection.execute(
+      "UPDATE accounts SET amount = ? WHERE userId = ?",
+      [newAmount, session.userId],
+    );
+
+    await connection.execute(
+      "INSERT INTO transactions (userId, amount) VALUES (?, ?)",
+      [session.userId, nrAmount],
+    );
+
+    await connection.commit();
+    return res.status(200).json({ amount: newAmount });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: "Internt serverfel" });
+  } finally {
+    connection.release();
+  }
+});
+app.post("/me/transactions", async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ message: "Token krävs" });
+  }
+
+  try {
+    const sessions = await query("SELECT * FROM sessions WHERE token = ?", [
+      token,
+    ]);
+    if (sessions.length === 0) {
+      return res.status(401).json({ message: "Ogiltig token" });
     }
-    
-    const newAmount = account.amount + nrAmount;
-    db.prepare('UPDATE accounts SET amount = ? WHERE userId = ?').run(newAmount, session.userId);
-    res.status(200).json({amount: newAmount});*/
+
+    const session = sessions[0];
+    const transactions = await query(
+      "SELECT * FROM transactions WHERE userId = ? ORDER BY createdAt DESC",
+      [session.userId],
+    );
+    return res.status(200).json({ transactions });
+  } catch (error) {
+    return res.status(500).json({ message: "Kunde inte hämta transaktioner" });
+  }
 });
 
 // Starta servern
 app.listen(port, () => {
-    console.log(`Bankens backend körs på http://localhost:${port}`);
+  console.log(`Bankens backend körs på http://localhost:${port}`);
 });
