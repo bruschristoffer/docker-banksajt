@@ -129,7 +129,7 @@ app.post("/me/accounts", async (req, res) => {
     }
 
     const session = sessions[0];
-    const accounts = await query("SELECT * FROM accounts WHERE userID = ?", [
+    const accounts = await query("SELECT * FROM accounts WHERE userId = ?", [
       session.userId,
     ]);
 

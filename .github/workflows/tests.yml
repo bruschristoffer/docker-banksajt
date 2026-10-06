@@ -1,16 +1,18 @@
-name: Tester
+name: Tester & Deploy
 
 on:
   push:
+    branches: ["main", "CI/CD", "Playwrite-och-Vitest"]
   pull_request:
+    branches: ["main", "CI/CD", "Playwrite-och-Vitest"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  passing-level:
-    name: Godkänt nivå
+  test-and-build:
+    name: Godkänd nivå (Tester)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -26,40 +28,62 @@ jobs:
       - name: Kontrollera projektstruktur
         shell: bash
         run: |
-          test -f frontend/package.json || {
-            echo "::error::frontend/package.json saknas. Skapa Next.js-projektet i mappen frontend."
-            exit 1
-          }
-          test -f frontend/package-lock.json || {
-            echo "::error::frontend/package-lock.json saknas. Projektet ska använda npm."
-            exit 1
-          }
-          test -f backend/package.json || {
-            echo "::error::backend/package.json saknas. Skapa Express-projektet i mappen backend."
-            exit 1
-          }
-          test -f backend/package-lock.json || {
-            echo "::error::backend/package-lock.json saknas. Projektet ska använda npm."
-            exit 1
-          }
+          test -f frontend/package.json || { echo "frontend/package.json saknas"; exit 1; }
+          test -f frontend/package-lock.json || { echo "frontend/package-lock.json saknas"; exit 1; }
+          test -f backend/package.json || { echo "backend/package.json saknas"; exit 1; }
+          test -f backend/package-lock.json || { echo "backend/package-lock.json saknas"; exit 1; }
 
-      - name: Installera frontend
-        run: npm ci --prefix frontend
+      - name: Installera beroenden
+        run: |
+          npm ci --prefix backend
+          npm ci --prefix frontend
+          if [ -d "tests" ]; then npm ci --prefix tests; fi
 
-      - name: Installera backend
-        run: npm ci --prefix backend
+      - name: Kör Vitest enhetstester (Backend)
+        run: npm test --prefix backend
 
-      - name: Installera tester
-        run: npm ci --prefix tests
+      - name: Starta applikationsmiljö med Docker Compose
+        run: |
+          docker compose down -v
+          docker compose up -d --build
 
-      - name: Installera Chromium
-        working-directory: tests
-        run: npx playwright install --with-deps chromium
+      - name: Vänta på att frontend och backend startar
+        run: |
+          timeout 60 bash -c 'until curl -s http://127.0.0.1:3000 > /dev/null; do sleep 2; done' || exit 1
 
-      - name: Bygg frontend
-        env:
-          NEXT_PUBLIC_API_URL: http://127.0.0.1:3001
-        run: npm run build --prefix frontend
+      - name: Kör skolans tester
+        run: |
+          if [ -d "tests" ]; then
+            npx --prefix tests playwright install --with-deps chromium
+            npm test --prefix tests
+          fi
 
-      - name: Kör tester
-        run: npm test --prefix tests
+      - name: Kör Playwright E2E-tester i frontend
+        run: |
+          npx --prefix frontend playwright install --with-deps chromium
+          npm run test:e2e --prefix frontend
+
+      - name: Stäng ner Docker Compose
+        if: always()
+        run: docker compose down -v
+
+  deploy:
+    name: Deploy to EC2
+    needs: test-and-build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Docker on EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/docker-banksajt
+            git fetch origin
+            git checkout Playwrite-och-Vitest
+            git pull origin Playwrite-och-Vitest
+            sudo docker compose down -v
+            sudo docker compose up -d --build

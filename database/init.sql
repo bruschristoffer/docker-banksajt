@@ -9,11 +9,11 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS accounts (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  userid INT UNSIGNED NOT NULL,
+  userId INT UNSIGNED NOT NULL,
   amount DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
   PRIMARY KEY (id),
-  UNIQUE KEY accounts_user_id_unique (userid),
-  FOREIGN KEY (userid) REFERENCES users(id) ON DELETE CASCADE
+  UNIQUE KEY accounts_user_id_unique (userId),
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS sessions (
