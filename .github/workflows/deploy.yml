@@ -30,3 +30,21 @@ jobs:
       - name: Build frontend
         working-directory: ./frontend
         run: npm run build
+
+  deploy:
+    name: Deploy to EC2
+    needs: test-frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Docker on EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/docker-banksajt
+            git checkout CI/CD
+            git pull origin CI/CD
+            sudo docker compose up -d --build
