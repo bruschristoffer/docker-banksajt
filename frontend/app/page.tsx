@@ -1,7 +1,4 @@
-import Image from "next/image";
 import Link from "next/link";
-
-const failCI: number = "detta kommer krascha bygget";
 
 export default function Home() {
   return (
