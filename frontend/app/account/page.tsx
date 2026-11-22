@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
 
 export default function AccountPage() {
-  const { token, logout } = useAuth();
+  const { token, logout, isLoading } = useAuth();
   const [amount, setAmount] = useState<number | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
   const [message, setMessage] = useState("");
@@ -15,6 +15,7 @@ export default function AccountPage() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3001";
 
   useEffect(() => {
+    if (isLoading) return;
     if (!token) {
       router.push("/login");
       return;
@@ -37,12 +38,12 @@ export default function AccountPage() {
         setAmount(data.amount);
       })
       .catch(() => logout());
-  }, [token, logout, router, apiUrl]);
+  }, [token, isLoading, logout, router, apiUrl]);
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!token) {
+    if (!token || isLoading) {
       router.push("/login");
       return;
     }

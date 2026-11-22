@@ -16,11 +16,12 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  const { token, logout } = useAuth();
+  const { token, logout, isLoading } = useAuth();
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3001";
 
   useEffect(() => {
+    if (isLoading) return;
     if (!token) {
       router.push("/login");
       return;
@@ -47,7 +48,7 @@ export default function TransactionsPage() {
         setError(err.message || "Något gick fel");
         setLoading(false);
       });
-  }, [token, logout, router, apiUrl]);
+  }, [token, isLoading, logout, router, apiUrl]);
 
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
