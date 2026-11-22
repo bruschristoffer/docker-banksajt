@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setToken = (newToken: string | null) => {
-    setToken(newToken);
+    setTokenState(newToken);
     if (newToken) {
       sessionStorage.setItem("jwt_token", newToken);
     } else {
