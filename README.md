@@ -2,6 +2,22 @@ http://13.48.30.194:3000
 
 AWS är blä
 
+1. Varför kan du läsa en JWT-payload utan signeringsnyckeln, och vad skyddar signaturen?
+   Payloaden är enbart en vanlig URL(base64)-kodad, inte krypterad alls, vilket gör att vem som helst kan avkoda och lässa innehållet. Med signaturen skyddas integriteten och bevisar sin "äktheten". Alltså bevisar det att datan är skapats av sever och är inte manipulerad.
+2. Vad händer om någon stjäl en giltig token innan den går ut? Stoppar en signatur den personen?
+   Det kan hända att token blir stjäld, och de stoppar inte token från att användas då det är "äkta". Därutav är det viktigt att livslängden är kort (15min-ish).
+3. Vad är skillnaden mellan att hasha ett lösenord och att signera en token?
+   Hasha(bcrypt) är en envägsfunktion som gör det omöjligt att återskapa lösenordet.
+   JWT(signering), är att datan förblir läsbar, men en hemlig nyckel skapar ett "sign" som garanterat att data inte har manipulerats
+4. Vilken risk finns med att algra en token i localStorage om sidan får en XSS-sårbarhet?
+   Att localStorage är full åtkomligt, vilket gör så att "hackaren" kan enkelt läsa ut och stjäla token.
+5. Varför kan servern inte automatiskt veta att en JWT ska sluta gälla när användaren klickar på logga ut?
+   JWT är tillståndslöst. Alltså sparar severn ingen aktiv sessionslista i databasen, istället förlitar den sig enbart på signaturen och utgångstiden (limited time for token)
+6. Vilka hemligheter finns i ert projekt, och var ska de lagras lokalt, i GitHub Actions och på EC2?
+   .env ligger i .gitignore. JWT_SECRET, datalösenord(DB_PASSWORD, MYSQL_ROOT_PASSWORD) samt SSH-nycklar är hemligheter.
+   GitHub Actions ligger krypterade repository secrets under repots inställningar
+   EC2 ligger den skyddade .env-filen så den är tillgänlig för applikcationen men inte från nån annan utomständig
+
 # Skapa en Banksajt och publicera på aws
 
 I dagens uppgift ska vi öva på att skapa en react-sajt med backend i express och publicera den på en ec2 instans i aws.

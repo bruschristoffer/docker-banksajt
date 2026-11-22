@@ -3,9 +3,16 @@ import bodyParser from "body-parser";
 import cors from "cors";
 import mysql from "mysql2/promise";
 import { validateAmount } from "./src/validateAmount.js";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
 const app = express();
 const port = process.env.PORT || 3001;
+
+const secret = process.env.JWT_SECRET;
+if (!secret || Buffer.byteLength(secret, "utf8") < 32) {
+  throw new Error("JWT_SECRET måste vara minst 32 bytes");
+}
 
 // Middleware
 app.use(cors());
@@ -24,11 +31,42 @@ async function query(sql, params) {
   return results;
 }
 
-// Generera engångslösenord
-function generateOTP() {
-  // Generera en sexsiffrig numerisk OTP
-  const otp = Math.floor(100000 + Math.random() * 900000);
-  return otp.toString();
+function requireAuth(req, res, next) {
+  const authHeader = req.get("Authorization");
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res
+      .status(401)
+      .json({ message: "Authorization header saknas eller är ogiltig" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const payload = jwt.verify(token, secret, {
+      algorithms: ["HS256"],
+      issuer: "banken",
+      audience: "banken-api",
+    });
+
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      typeof payload.sub !== "string"
+    ) {
+      return res.status(401).json({ message: "Ogiltig token" });
+    }
+
+    const userId = Number(payload.sub);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ message: "Ogiltig avnändar-id i token" });
+    }
+
+    req.userId = userId;
+    next();
+  } catch {
+    return res.status(401).json({ message: "Ogiltig token eller utgått" });
+  }
 }
 
 // Din kod här. Skriv dina routes:
@@ -41,19 +79,18 @@ app.post("/users", async (req, res) => {
     return res.status(400).json({ message: "Användarnamn och lösenord krävs" });
   }
 
-  /*try {
-        const insertUser = db.prepare('INSERT INTO users (username, password) VALUES (?, ?)');
-        const userResult = insertUser.run(username, password);
-        const userId = Number(userResult.lastInsertRowid);
+  if (password.length < 8) {
+    return res
+      .status(400)
+      .json({ message: "Lösenordet måste vara minst 8 tecken" });
+  }
 
-        const insertAccount = db.prepare('INSERT INTO accounts (userId, amount) VALUES (?, 0)');
-        insertAccount.run(userId);
+  try {
+    const passwordHash = await bcrypt.hash(password, 12);
 
-        return res.status(201).json({ message: 'Användare skapad', userId });
-    }*/ try {
     const userResult = await query(
-      "INSERT INTO users (username, password) VALUES (?, ?)",
-      [username, password],
+      "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+      [username, passwordHash],
     );
     const userId = userResult.insertId;
 
@@ -74,164 +111,114 @@ app.post("/users", async (req, res) => {
 app.post("/sessions", async (req, res) => {
   const { username, password } = req.body;
 
+  if (!username || !password) {
+    return res
+      .status(401)
+      .json({ message: "Felaktigt användare eller lösenord" });
+  }
+
   try {
     const users = await query(
-      "SELECT * FROM users WHERE username = ? AND password = ?",
-      [username, password],
+      "SELECT id, password_hash FROM users WHERE username = ?",
+      [username],
     );
 
     if (users.length === 0) {
       return res
         .status(401)
-        .json({ message: "Felaktigt användare eller lösenord" });
+        .json({ error: "Felaktigt användare eller lösenord" });
     }
 
     const user = users[0];
-    const token = generateOTP();
-    await query("INSERT INTO sessions (token, userId) VALUES (?, ?)", [
-      token,
-      user.id,
-    ]);
+    const passwordIsCorrect = await bcrypt.compare(
+      password,
+      user.password_hash,
+    );
+
+    if (!passwordIsCorrect) {
+      return res
+        .status(401)
+        .json({ error: "Felaktigt användare eller lösenord" });
+    }
+    const token = jwt.sign({ sub: String(user.id) }, secret, {
+      algorithm: "HS256",
+      issuer: "banken",
+      audience: "banken-api",
+      expiresIn: "15m",
+    });
 
     return res.status(200).json({ token });
-  } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Ett fel uppstod vid inloggningen" });
+  } catch {
+    return res.status(500).json({ error: "Ett fel uppstod vid inloggningen" });
   }
-  /*
-    const user = db.prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password);
-
-    if (!user) {
-        return res.status(401).json({ message: 'Felaktigt användare eller lösenord' });
-    }
-
-    const token = generateOTP();
-    db.prepare('INSERT INTO sessions (token, userId) VALUES (?, ?)').run(token, user.id);
-
-    res.status(200).json({ token });*/
 });
 
 //kontrollerar om token är giltig och returnerar kontoinformationen för den användaren.
-app.post("/me/accounts", async (req, res) => {
-  const { token } = req.body;
-  if (!token) {
-    return res.status(400).json({ message: "Token krävs" });
-  }
-
+app.post("/me/accounts", requireAuth, async (req, res) => {
   try {
-    const sessions = await query("SELECT * FROM sessions WHERE token = ?", [
-      token,
-    ]);
-
-    if (sessions.length === 0) {
-      return res.status(401).json({ message: "Ogiltig token" });
-    }
-
-    const session = sessions[0];
     const accounts = await query("SELECT * FROM accounts WHERE userId = ?", [
-      session.userId,
+      req.userId,
     ]);
-
     if (accounts.length === 0) {
       return res.status(404).json({ message: "Konto hittades inte" });
     }
     return res.status(200).json({ amount: Number(accounts[0].amount) });
-  } catch (error) {
+  } catch {
     return res.status(500).json({ message: "Internt serverfel" });
   }
-
-  /*const session = db.prepare('SELECT * FROM sessions WHERE token = ?').get(token);
-    if (!session) {
-        return res.status(401).json({ message: 'Ogiltig token' });
-    }
-
-    const accont = db.prepare('SELECT * FROM accounts WHERE userId = ?').get(session.userId);
-    if (!accont) {
-        return res.status(404).json({ message: 'Konto hittades inte' });
-    }
-
-    res.status(200).json({ amount: accont.amount });*/
 });
 
 //kontrollerar om token är giltig och uppdaterar kontots saldo med det angivna beloppet.
-app.post("/me/accounts/transactions", async (req, res) => {
-  const { token, amount } = req.body;
-  // const nrAmount = parseFloat(amount);
+app.post("/me/accounts/transactions", requireAuth, async (req, res) => {
+  const { amount } = req.body;
 
-  if (!token) {
-    return res.status(400).json({ message: "Token krävs" });
+  const validation = validateAmount(amount);
+  if (!validation.valid) {
+    return res.status(400).json({ message: validation.message });
   }
-  const validate = validateAmount(amount);
-  if (!validate.valid) {
-    return res.status(400).json({ message: validate.message });
-  }
-
-  const nrAmount = validate.value;
+  const nrAmount = validation.value;
 
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
-    const [sessions] = await connection.execute(
-      "SELECT * FROM sessions WHERE token = ?",
-      [token],
-    );
-    if (sessions.length === 0) {
-      await connection.rollback();
-      return res.status(401).json({ message: "Ogiltig token" });
-    }
-
-    const session = sessions[0];
     const [accounts] = await connection.execute(
       "SELECT * FROM accounts WHERE userId = ?",
-      [session.userId],
+      [req.userId],
     );
+
     if (accounts.length === 0) {
       await connection.rollback();
-      return res.status(404).json({ message: "Konto hittades inte" });
+      return res.status(404).json({ error: "Konto hittades inte" });
     }
 
     const newAmount = Number(accounts[0].amount) + nrAmount;
 
     await connection.execute(
       "UPDATE accounts SET amount = ? WHERE userId = ?",
-      [newAmount, session.userId],
+      [newAmount, req.userId],
     );
 
     await connection.execute(
       "INSERT INTO transactions (userId, amount) VALUES (?, ?)",
-      [session.userId, nrAmount],
+      [req.userId, nrAmount],
     );
 
     await connection.commit();
     return res.status(200).json({ amount: newAmount });
-  } catch (error) {
+  } catch {
     await connection.rollback();
     return res.status(500).json({ message: "Internt serverfel" });
   } finally {
     connection.release();
   }
 });
-app.post("/me/transactions", async (req, res) => {
-  const { token } = req.body;
 
-  if (!token) {
-    return res.status(400).json({ message: "Token krävs" });
-  }
-
+app.post("/me/transactions", requireAuth, async (req, res) => {
   try {
-    const sessions = await query("SELECT * FROM sessions WHERE token = ?", [
-      token,
-    ]);
-    if (sessions.length === 0) {
-      return res.status(401).json({ message: "Ogiltig token" });
-    }
-
-    const session = sessions[0];
     const transactions = await query(
-      "SELECT * FROM transactions WHERE userId = ? ORDER BY createdAt DESC",
-      [session.userId],
+      "SELECT id, amount, createdAt FROM transactions WHERE userId = ? ORDER BY createdAt DESC, id DESC",
+      [req.userId],
     );
     return res.status(200).json({ transactions });
   } catch (error) {

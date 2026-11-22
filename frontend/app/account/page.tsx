@@ -3,26 +3,29 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "../context/AuthContext";
 
 export default function AccountPage() {
+  const { token, logout } = useAuth();
   const [amount, setAmount] = useState<number | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
   const [message, setMessage] = useState("");
   const router = useRouter();
 
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3001";
+
   useEffect(() => {
-    const token = sessionStorage.getItem("token");
     if (!token) {
       router.push("/login");
       return;
     }
 
-    fetch("http://127.0.0.1:3001/me/accounts", {
+    fetch(`${apiUrl}/me/accounts`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ token }),
     })
       .then((res) => {
         if (!res.ok) {
@@ -33,28 +36,25 @@ export default function AccountPage() {
       .then((data) => {
         setAmount(data.amount);
       })
-      .catch(() => router.push("/login"));
-  }, [router]);
+      .catch(() => logout());
+  }, [token, logout, router, apiUrl]);
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = sessionStorage.getItem("token");
 
     if (!token) {
       router.push("/login");
       return;
     }
     try {
-      const res = await fetch(
-        "http://127.0.0.1:3001/me/accounts/transactions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ token, amount: Number(depositAmount) }),
+      const res = await fetch(`${apiUrl}/me/accounts/transactions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-      );
+        body: JSON.stringify({ amount: Number(depositAmount) }),
+      });
 
       if (res.ok) {
         const data = await res.json();
@@ -65,7 +65,7 @@ export default function AccountPage() {
         const err = await res.json();
         setMessage(err.message || "Gick inte att genomföra insättningen");
       }
-    } catch (error) {
+    } catch {
       setMessage("Något gick fel vid insättningen");
     }
   };
@@ -80,13 +80,7 @@ export default function AccountPage() {
           <Link href="/transactions" className="font-medium">
             Transaktioner
           </Link>
-          <button
-            onClick={() => {
-              sessionStorage.removeItem("token");
-              router.push("/login");
-            }}
-            className="font-medium"
-          >
+          <button onClick={logout} className="font-medium">
             Logga ut
           </button>
         </nav>

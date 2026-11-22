@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "../context/AuthContext";
 
 interface Transaction {
   id: number;
@@ -15,20 +16,22 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const { token, logout } = useAuth();
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:3001";
 
   useEffect(() => {
-    const token = sessionStorage.getItem("token");
     if (!token) {
       router.push("/login");
       return;
     }
 
-    fetch("http://127.0.0.1:3001/me/transactions", {
+    fetch(`${apiUrl}/me/transactions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ token }),
     })
       .then((res) => {
         if (!res.ok) {
@@ -44,7 +47,7 @@ export default function TransactionsPage() {
         setError(err.message || "Något gick fel");
         setLoading(false);
       });
-  }, [router]);
+  }, [token, logout, router, apiUrl]);
 
   return (
     <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
@@ -54,13 +57,7 @@ export default function TransactionsPage() {
           <Link href="/account" className="font-medium">
             Mitt konto
           </Link>
-          <button
-            onClick={() => {
-              sessionStorage.removeItem("token");
-              router.push("/login");
-            }}
-            className="font-medium"
-          >
+          <button onClick={logout} className="font-medium">
             Logga ut
           </button>
         </nav>

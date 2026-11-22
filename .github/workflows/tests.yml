@@ -2,9 +2,9 @@ name: Tester & Deploy
 
 on:
   push:
-    branches: ["main", "CI/CD", "Playwrite-och-Vitest"]
+    branches: ["main", "CI/CD", "Playwrite-och-Vitest", "JWT-och-bcrypt"]
   pull_request:
-    branches: ["main", "CI/CD", "Playwrite-och-Vitest"]
+    branches: ["main", "CI/CD", "Playwrite-och-Vitest", "JWT-och-bcrypt"]
   workflow_dispatch:
 
 permissions:
@@ -43,6 +43,8 @@ jobs:
         run: npm test --prefix backend
 
       - name: Starta applikationsmiljö med Docker Compose
+        env:
+          JWT_SECRET: "ci_test_secret_for_docker_banksajt_at_least_32_bytes_long"
         run: |
           docker compose down -v
           docker compose up -d --build
@@ -83,7 +85,7 @@ jobs:
           script: |
             cd /home/ubuntu/docker-banksajt
             git fetch origin
-            git checkout Playwrite-och-Vitest
-            git pull origin Playwrite-och-Vitest
+            git checkout JWT-och-bcrypt
+            git pull origin JWT-och-bcrypt
             sudo docker compose down -v
             sudo docker compose up -d --build

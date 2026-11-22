@@ -2,3 +2,5 @@
 tests/test-results/
 tests/playwright-report/
 frontend/.next/
+.env
+**/.env
